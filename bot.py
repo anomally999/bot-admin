@@ -1,4 +1,4 @@
-# royal_court.py — Royal Court Administration Bot
+# royal_court.py — Royal Court Administration Bot (Render-Ready Version)
 # Admin-only commands for medieval realm management
 import os
 import random
@@ -8,12 +8,23 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from datetime import timedelta, datetime as dt, timezone
 from discord.utils import utcnow
+import logging
+
+# ---------- LOGGING ----------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ---------- ENV ----------
 load_dotenv()
-TOKEN  = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")
 PREFIX = os.getenv("PREFIX", "!")
 DB_NAME = "royal_court.db"
+
+# Validate required environment variables
+if not TOKEN:
+    logger.error("❌ DISCORD_TOKEN environment variable is not set!")
+    logger.error("Please set it in your Render dashboard under Environment Variables")
+    exit(1)
 
 # ---------- MEDIEVAL FLAIR ----------
 MEDIEVAL_COLORS = {
@@ -106,59 +117,100 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None, ca
 
 # ---------- DB ----------
 def init_db():
-    with sqlite3.connect(DB_NAME) as db:
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS punishments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            moderator_id INTEGER,
-            action TEXT,
-            reason TEXT,
-            timestamp TEXT
-        )""")
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS guild_config (
-            guild_id INTEGER PRIMARY KEY,
-            pillory_channel INTEGER,
-            decree_channel INTEGER
-        )""")
-        db.commit()
+    """Initialize database with proper error handling for Render"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            # Create punishments table
+            db.execute("""
+            CREATE TABLE IF NOT EXISTS punishments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                moderator_id INTEGER,
+                action TEXT,
+                reason TEXT,
+                timestamp TEXT
+            )""")
+            
+            # Create guild_config table
+            db.execute("""
+            CREATE TABLE IF NOT EXISTS guild_config (
+                guild_id INTEGER PRIMARY KEY,
+                pillory_channel INTEGER,
+                decree_channel INTEGER
+            )""")
+            
+            db.commit()
+            logger.info("✅ Database initialized successfully")
+    except sqlite3.Error as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        raise
 
 # ---------- PUNISHMENT LOG ----------
 def log_action(user_id, moderator_id, action, reason):
-    with sqlite3.connect(DB_NAME) as db:
-        db.execute(
-            "INSERT INTO punishments (user_id, moderator_id, action, reason, timestamp) VALUES (?,?,?,?,?)",
-            (user_id, moderator_id, action, reason, utcnow().isoformat()))
-        db.commit()
+    """Log punishment action with error handling"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            db.execute(
+                "INSERT INTO punishments (user_id, moderator_id, action, reason, timestamp) VALUES (?,?,?,?,?)",
+                (user_id, moderator_id, action, reason, utcnow().isoformat()))
+            db.commit()
+            logger.info(f"✅ Logged action: {action} for user {user_id}")
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to log action: {e}")
 
 def fetch_history(user_id):
-    with sqlite3.connect(DB_NAME) as db:
-        cur = db.execute(
-            "SELECT action, reason, timestamp FROM punishments WHERE user_id=? ORDER BY timestamp DESC", (user_id,))
-        return cur.fetchall()
+    """Fetch user punishment history"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            cur = db.execute(
+                "SELECT action, reason, timestamp FROM punishments WHERE user_id=? ORDER BY timestamp DESC", (user_id,))
+            return cur.fetchall()
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to fetch history for user {user_id}: {e}")
+        return []
 
 def set_pillory_channel(guild_id, channel_id):
-    with sqlite3.connect(DB_NAME) as db:
-        db.execute("INSERT OR REPLACE INTO guild_config (guild_id, pillory_channel) VALUES (?,?)", (guild_id, channel_id))
-        db.commit()
+    """Set pillory channel with error handling"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            db.execute("INSERT OR REPLACE INTO guild_config (guild_id, pillory_channel) VALUES (?,?)", (guild_id, channel_id))
+            db.commit()
+            logger.info(f"✅ Set pillory channel for guild {guild_id}")
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to set pillory channel: {e}")
 
 def get_pillory_channel(guild_id):
-    with sqlite3.connect(DB_NAME) as db:
-        row = db.execute("SELECT pillory_channel FROM guild_config WHERE guild_id=?", (guild_id,)).fetchone()
-        return row[0] if row else None
+    """Get pillory channel"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            row = db.execute("SELECT pillory_channel FROM guild_config WHERE guild_id=?", (guild_id,)).fetchone()
+            return row[0] if row else None
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to get pillory channel for guild {guild_id}: {e}")
+        return None
 
 def set_decree_channel(guild_id, channel_id):
-    with sqlite3.connect(DB_NAME) as db:
-        db.execute("INSERT OR REPLACE INTO guild_config (guild_id, decree_channel) VALUES (?,?)", (guild_id, channel_id))
-        db.commit()
+    """Set decree channel with error handling"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            db.execute("INSERT OR REPLACE INTO guild_config (guild_id, decree_channel) VALUES (?,?)", (guild_id, channel_id))
+            db.commit()
+            logger.info(f"✅ Set decree channel for guild {guild_id}")
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to set decree channel: {e}")
 
 def get_decree_channel(guild_id):
-    with sqlite3.connect(DB_NAME) as db:
-        row = db.execute("SELECT decree_channel FROM guild_config WHERE guild_id=?", (guild_id,)).fetchone()
-        return row[0] if row else None
+    """Get decree channel"""
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            row = db.execute("SELECT decree_channel FROM guild_config WHERE guild_id=?", (guild_id,)).fetchone()
+            return row[0] if row else None
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to get decree channel for guild {guild_id}: {e}")
+        return None
 
 def can_act_on(target: discord.Member, ctx):
+    """Check if bot can act on target member"""
     if target == ctx.guild.owner:
         return False, "The sovereign monarch may not be judged, noble sir."
     if target == ctx.guild.me:
@@ -666,10 +718,18 @@ async def courtlog(ctx, limit: int = 10):
         )
         return await ctx.send(embed=embed)
 
-    with sqlite3.connect(DB_NAME) as db:
-        rows = db.execute(
-            "SELECT user_id, moderator_id, action, reason, timestamp FROM punishments ORDER BY timestamp DESC LIMIT ?",
-            (limit,)).fetchall()
+    try:
+        with sqlite3.connect(DB_NAME) as db:
+            rows = db.execute(
+                "SELECT user_id, moderator_id, action, reason, timestamp FROM punishments ORDER BY timestamp DESC LIMIT ?",
+                (limit,)).fetchall()
+    except sqlite3.Error as e:
+        logger.error(f"❌ Failed to fetch court log: {e}")
+        embed = medieval_response(
+            "The royal chronicles are sealed! The scribes have failed us!",
+            success=False
+        )
+        return await ctx.send(embed=embed)
 
     if not rows:
         embed = medieval_response(
@@ -873,10 +933,18 @@ async def setdecree(ctx, channel: discord.TextChannel):
 # ---------- ON READY ----------
 @bot.event
 async def on_ready():
-    print(f'🏰  Royal Court Bot hath awakened as {bot.user} (ID: {bot.user.id})')
-    print('⚖️  Ready to administer royal justice!')
-    print('📜  Royal seals prepared and chronicles open!')
-    print('------')
+    logger.info(f'🏰  Royal Court Bot hath awakened as {bot.user} (ID: {bot.user.id})')
+    logger.info('⚖️  Ready to administer royal justice!')
+    logger.info('📜  Royal seals prepared and chronicles open!')
+    
+    # Initialize database
+    try:
+        init_db()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+    
+    logger.info('------')
 
 # ---------- ERROR HANDLER ----------
 @bot.event
@@ -937,13 +1005,21 @@ async def on_command_error(ctx, error):
             success=False
         )
         await ctx.send(embed=embed)
-        print("🏰  Unhandled error:", type(error).__name__, error)
+        logger.error(f"🏰  Unhandled error: {type(error).__name__} - {error}")
 
 # ---------- RUN ----------
 if __name__ == "__main__":
-    init_db()
-    print("🏰  Initializing Royal Court Administration Bot...")
-    print("⚖️  Preparing judgment systems...")
-    print("📜  Loading royal chronicles...")
-    print("🎭  All commands require the royal seal...")
-    bot.run(TOKEN)
+    logger.info("🏰  Initializing Royal Court Administration Bot...")
+    logger.info("⚖️  Preparing judgment systems...")
+    logger.info("📜  Loading royal chronicles...")
+    logger.info("🎭  All commands require the royal seal...")
+    
+    try:
+        bot.run(TOKEN)
+    except discord.LoginFailure:
+        logger.error("❌ Failed to login! Check your DISCORD_TOKEN environment variable.")
+        logger.error("Make sure it's set correctly in your Render dashboard.")
+        exit(1)
+    except Exception as e:
+        logger.error(f"❌ Bot crashed: {e}")
+        exit(1)
