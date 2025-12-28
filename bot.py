@@ -1,10 +1,9 @@
-# royal_court.py — Royal Court Administration Bot (Render-Ready Version)
-# Admin-only commands for medieval realm management
+# royal_court_render_fixed.py - Fixed for Python 3.13 compatibility
 import os
 import random
 import sqlite3
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from dotenv import load_dotenv
 from datetime import timedelta, datetime as dt, timezone
 from discord.utils import utcnow
@@ -39,52 +38,22 @@ MEDIEVAL_COLORS = {
 }
 
 MEDIEVAL_PREFIXES = [
-    "Hark!",
-    "Verily,",
-    "By mine honour,",
-    "Prithee,",
-    "Forsooth,",
-    "By the King's decree,",
-    "Hear ye, hear ye!",
-    "Lo and behold,",
-    "By mine troth,",
-    "Marry,",
-    "Gadzooks!",
-    "Zounds!",
-    "By the saints,",
-    "By my halidom,",
-    "In faith,",
-    "By my beard,",
-    "By the rood,",
-    "Alack,",
-    "Alas,",
-    "Fie upon it!",
+    "Hark!", "Verily,", "By mine honour,", "Prithee,", "Forsooth,", 
+    "By the King's decree,", "Hear ye, hear ye!", "Lo and behold,",
+    "By mine troth,", "Marry,", "Gadzooks!", "Zounds!", "By the saints,",
+    "By my halidom,", "In faith,", "By my beard,", "By the rood,", "Alack,", "Alas,", "Fie upon it!",
 ]
 
 ROYAL_TITLES = [
-    "Royal Decree from the Throne",
-    "Proclamation of the Crown",
-    "Edict from the Royal Court",
-    "Mandate of the Sovereign",
-    "Declaration from the Monarch",
-    "Announcement from the Castle",
-    "Word from the Keep",
-    "Message from the Palace",
-    "Command from the Regent",
-    "Bull from the Pontiff",
+    "Royal Decree from the Throne", "Proclamation of the Crown", "Edict from the Royal Court",
+    "Mandate of the Sovereign", "Declaration from the Monarch", "Announcement from the Castle",
+    "Word from the Keep", "Message from the Palace", "Command from the Regent", "Bull from the Pontiff",
 ]
 
 ROYAL_SIGNATURES = [
-    "By order of the Crown",
-    "Sealed with the Royal Seal",
-    "Witnessed by the Royal Scribe",
-    "Proclaimed throughout the realm",
-    "Let all subjects take heed",
-    "Inscribed by the Court Chronicler",
-    "Signed with royal blood",
-    "Marked with the King's signet",
-    "Carried by royal messenger",
-    "Announced with trumpet blast",
+    "By order of the Crown", "Sealed with the Royal Seal", "Witnessed by the Royal Scribe",
+    "Proclaimed throughout the realm", "Let all subjects take heed", "Inscribed by the Court Chronicler",
+    "Signed with royal blood", "Marked with the King's signet", "Carried by royal messenger", "Announced with trumpet blast",
 ]
 
 def get_medieval_prefix():
@@ -93,20 +62,14 @@ def get_medieval_prefix():
 def medieval_embed(title="", description="", color_name="gold"):
     """Create an embed with medieval styling"""
     color = MEDIEVAL_COLORS.get(color_name, MEDIEVAL_COLORS["gold"])
-    embed = discord.Embed(
-        title=f"⚔️  {title}" if title else None,
-        description=description,
-        colour=color
-    )
+    embed = discord.Embed(title=f"⚔️  {title}" if title else None, description=description, colour=color)
     return embed
 
 def medieval_response(message, success=True):
     """Create a medieval-style response message"""
     prefix = get_medieval_prefix()
     color = "green" if success else "red"
-
     full_message = f"{prefix} {message}".strip()
-
     return medieval_embed(description=full_message, color_name=color)
 
 # ---------- BOT ----------
@@ -115,12 +78,14 @@ intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None, case_insensitive=True)
 
+# Add start_time for status tracking
+bot.start_time = utcnow()
+
 # ---------- DB ----------
 def init_db():
     """Initialize database with proper error handling for Render"""
     try:
         with sqlite3.connect(DB_NAME) as db:
-            # Create punishments table
             db.execute("""
             CREATE TABLE IF NOT EXISTS punishments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,15 +95,12 @@ def init_db():
                 reason TEXT,
                 timestamp TEXT
             )""")
-            
-            # Create guild_config table
             db.execute("""
             CREATE TABLE IF NOT EXISTS guild_config (
                 guild_id INTEGER PRIMARY KEY,
                 pillory_channel INTEGER,
                 decree_channel INTEGER
             )""")
-            
             db.commit()
             logger.info("✅ Database initialized successfully")
     except sqlite3.Error as e:
@@ -219,6 +181,40 @@ def can_act_on(target: discord.Member, ctx):
         return False, "The target beareth greater station than the Crown's agent, m'lord."
     return True, ""
 
+# ---------- WEB SERVER FOR RENDER ----------
+from aiohttp import web
+import asyncio
+
+async def health_check(request):
+    """Health check endpoint for Render"""
+    return web.Response(text="🏰 Royal Court Bot is alive and serving justice!")
+
+async def ping_endpoint(request):
+    """Keep-alive ping endpoint"""
+    return web.Response(text="⚔️ Bot heartbeat active!")
+
+async def status_endpoint(request):
+    """Bot status endpoint"""
+    if bot.is_ready():
+        uptime = utcnow() - bot.start_time
+        return web.json_response({
+            "status": "online",
+            "guilds": len(bot.guilds),
+            "users": sum(g.member_count for g in bot.guilds),
+            "uptime": str(uptime).split('.')[0],  # Remove microseconds
+            "commands": len(bot.commands)
+        })
+    else:
+        return web.json_response({"status": "starting"}, status=503)
+
+def create_web_app():
+    """Create web application for Render"""
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/ping', ping_endpoint)
+    app.router.add_get('/status', status_endpoint)
+    return app
+
 # ---------- ROYAL COMMANDS ----------
 @bot.command(name="help")
 @commands.has_permissions(administrator=True)
@@ -256,7 +252,6 @@ async def _help(ctx):
     )
 
     embed.set_footer(text=f"Royal Court of {ctx.guild.name}")
-
     await ctx.send(embed=embed)
 
 # ---------- PURGE COMMAND ----------
@@ -266,34 +261,23 @@ async def _help(ctx):
 async def purge(ctx, amount: int = 10):
     """Cleanse the hall of messages"""
     if amount < 1 or amount > 100:
-        embed = medieval_response(
-            "Thou mayest cleanse between 1 and 100 messages only, m'lord!",
-            success=False
-        )
+        embed = medieval_response("Thou mayest cleanse between 1 and 100 messages only, m'lord!", success=False)
         return await ctx.send(embed=embed)
 
     if not ctx.guild.me.guild_permissions.manage_messages:
-        embed = medieval_response(
-            "The Crown lacketh power to cleanse messages in this hall!",
-            success=False
-        )
+        embed = medieval_response("The Crown lacketh power to cleanse messages in this hall!", success=False)
         return await ctx.send(embed=embed)
 
     try:
-        # Delete command message
         try:
             await ctx.message.delete()
         except:
             pass
 
-        # Purge messages
         deleted = await ctx.channel.purge(limit=amount)
 
         if len(deleted) == 0:
-            embed = medieval_response(
-                "No messages could be cleansed! They may be older than a fortnight.",
-                success=False
-            )
+            embed = medieval_response("No messages could be cleansed! They may be older than a fortnight.", success=False)
             return await ctx.send(embed=embed, delete_after=5)
 
         log_action(ctx.author.id, ctx.author.id, "purge", f"Cleansed {len(deleted)} messages")
@@ -310,19 +294,13 @@ async def purge(ctx, amount: int = 10):
             description=f"🧹  {random.choice(purge_messages)}\n\n*By order of {ctx.author.mention}*",
             color_name="grey"
         )
-        msg = await ctx.send(embed=embed, delete_after=5)
+        await ctx.send(embed=embed, delete_after=5)
 
     except discord.Forbidden:
-        embed = medieval_response(
-            "The royal seal hath no power to cleanse here!",
-            success=False
-        )
+        embed = medieval_response("The royal seal hath no power to cleanse here!", success=False)
         await ctx.send(embed=embed, delete_after=5)
     except discord.HTTPException:
-        embed = medieval_response(
-            "Messages older than a fortnight cannot be cleansed!",
-            success=False
-        )
+        embed = medieval_response("Messages older than a fortnight cannot be cleansed!", success=False)
         await ctx.send(embed=embed, delete_after=5)
 
 # ---------- BANISH COMMAND ----------
@@ -332,10 +310,7 @@ async def purge(ctx, amount: int = 10):
 async def banish(ctx, member: discord.Member, *, reason: str = "By royal decree"):
     """Exile a soul forever from the realm"""
     if not ctx.guild.me.guild_permissions.ban_members:
-        embed = medieval_response(
-            "The Crown's herald lacketh the seal to banish souls from the realm!",
-            success=False
-        )
+        embed = medieval_response("The Crown's herald lacketh the seal to banish souls from the realm!", success=False)
         return await ctx.send(embed=embed)
 
     ok, msg = can_act_on(member, ctx)
@@ -362,10 +337,7 @@ async def banish(ctx, member: discord.Member, *, reason: str = "By royal decree"
         embed.set_footer(text="Let this be a warning to all who would defy the Crown")
         await ctx.send(embed=embed)
     except discord.Forbidden:
-        embed = medieval_response(
-            "The gate guards refuse the writ of banishment!",
-            success=False
-        )
+        embed = medieval_response("The gate guards refuse the writ of banishment!", success=False)
         await ctx.send(embed=embed)
 
 # ---------- CASTOUT COMMAND ----------
@@ -375,10 +347,7 @@ async def banish(ctx, member: discord.Member, *, reason: str = "By royal decree"
 async def castout(ctx, member: discord.Member, *, reason: str = "Unfit for the court"):
     """Cast a peasant from the castle gates"""
     if not ctx.guild.me.guild_permissions.kick_members:
-        embed = medieval_response(
-            "The Crown lacketh the authority to cast out subjects!",
-            success=False
-        )
+        embed = medieval_response("The Crown lacketh the authority to cast out subjects!", success=False)
         return await ctx.send(embed=embed)
 
     ok, msg = can_act_on(member, ctx)
@@ -405,10 +374,7 @@ async def castout(ctx, member: discord.Member, *, reason: str = "Unfit for the c
         embed.set_footer(text="May they learn humility beyond our walls")
         await ctx.send(embed=embed)
     except discord.Forbidden:
-        embed = medieval_response(
-            "The guards at the gate refuse to open them!",
-            success=False
-        )
+        embed = medieval_response("The guards at the gate refuse to open them!", success=False)
         await ctx.send(embed=embed)
 
 # ---------- PILLORY COMMAND ----------
@@ -418,17 +384,11 @@ async def castout(ctx, member: discord.Member, *, reason: str = "Unfit for the c
 async def pillory(ctx, member: discord.Member, minutes: int, *, reason: str = "Crimes against the Crown"):
     """Bind a wretch in public stocks"""
     if minutes <= 0 or minutes > 40320:
-        embed = medieval_response(
-            "Sentence must be between 1 minute and 4 weeks (40320 minutes), m'lord!",
-            success=False
-        )
+        embed = medieval_response("Sentence must be between 1 minute and 4 weeks (40320 minutes), m'lord!", success=False)
         return await ctx.send(embed=embed)
 
     if not ctx.guild.me.guild_permissions.moderate_members:
-        embed = medieval_response(
-            "The Crown lacketh the chains to bind offenders!",
-            success=False
-        )
+        embed = medieval_response("The Crown lacketh the chains to bind offenders!", success=False)
         return await ctx.send(embed=embed)
 
     ok, msg = can_act_on(member, ctx)
@@ -451,16 +411,10 @@ async def pillory(ctx, member: discord.Member, minutes: int, *, reason: str = "C
     try:
         await member.timeout(until, reason=f"{ctx.author}: {reason}")
     except discord.Forbidden:
-        embed = medieval_response(
-            "The sheriff refuseth to apply the stocks!",
-            success=False
-        )
+        embed = medieval_response("The sheriff refuseth to apply the stocks!", success=False)
         return await ctx.send(embed=embed)
     except discord.HTTPException:
-        embed = medieval_response(
-            "The stocks' lock did break! Try anon, good sir!",
-            success=False
-        )
+        embed = medieval_response("The stocks' lock did break! Try anon, good sir!", success=False)
         return await ctx.send(embed=embed)
 
     log_action(member.id, ctx.author.id, "pillory", f"{minutes} minutes: {reason}")
@@ -498,17 +452,11 @@ async def pillory(ctx, member: discord.Member, minutes: int, *, reason: str = "C
 async def stocks(ctx, member: discord.Member, minutes: int, *, reason: str = "Bound by royal order"):
     """Mute a tongue with royal locks"""
     if minutes <= 0 or minutes > 40320:
-        embed = medieval_response(
-            "Sentence must be 1-40320 minutes, noble sir!",
-            success=False
-        )
+        embed = medieval_response("Sentence must be 1-40320 minutes, noble sir!", success=False)
         return await ctx.send(embed=embed)
 
     if not ctx.guild.me.guild_permissions.moderate_members:
-        embed = medieval_response(
-            "The Crown lacketh the manacles to silence tongues!",
-            success=False
-        )
+        embed = medieval_response("The Crown lacketh the manacles to silence tongues!", success=False)
         return await ctx.send(embed=embed)
 
     ok, msg = can_act_on(member, ctx)
@@ -546,16 +494,10 @@ async def stocks(ctx, member: discord.Member, minutes: int, *, reason: str = "Bo
         embed.set_footer(text="Silence breeds contemplation")
         await ctx.send(embed=embed)
     except discord.Forbidden:
-        embed = medieval_response(
-            "The sheriff refuseth to apply the lock!",
-            success=False
-        )
+        embed = medieval_response("The sheriff refuseth to apply the lock!", success=False)
         await ctx.send(embed=embed)
     except discord.HTTPException:
-        embed = medieval_response(
-            "The stocks did splinter! Try anon, m'lord!",
-            success=False
-        )
+        embed = medieval_response("The stocks did splinter! Try anon, m'lord!", success=False)
         await ctx.send(embed=embed)
 
 # ---------- PARDON COMMAND ----------
@@ -565,10 +507,7 @@ async def stocks(ctx, member: discord.Member, minutes: int, *, reason: str = "Bo
 async def pardon(ctx, member: discord.Member):
     """Grant royal mercy to a soul"""
     if not ctx.guild.me.guild_permissions.moderate_members:
-        embed = medieval_response(
-            "The Crown lacketh the key to grant pardons!",
-            success=False
-        )
+        embed = medieval_response("The Crown lacketh the key to grant pardons!", success=False)
         return await ctx.send(embed=embed)
 
     ok, msg = can_act_on(member, ctx)
@@ -595,16 +534,10 @@ async def pardon(ctx, member: discord.Member):
         embed.set_footer(text="Mercy is the mark of a true monarch")
         await ctx.send(embed=embed)
     except discord.Forbidden:
-        embed = medieval_response(
-            "The sheriff refuseth to turn the key!",
-            success=False
-        )
+        embed = medieval_response("The sheriff refuseth to turn the key!", success=False)
         await ctx.send(embed=embed)
     except discord.HTTPException:
-        embed = medieval_response(
-            "The pardon scroll did tear! Try anon, good sir!",
-            success=False
-        )
+        embed = medieval_response("The pardon scroll did tear! Try anon, good sir!", success=False)
         await ctx.send(embed=embed)
 
 # ---------- SUMMON COMMAND ----------
@@ -638,10 +571,7 @@ async def chronicle(ctx, member: discord.Member):
     """Read the criminal records of a soul"""
     rows = fetch_history(member.id)
     if not rows:
-        embed = medieval_response(
-            f"{member.display_name} beareth no recorded misdeeds. A soul of pure virtue!",
-            success=True
-        )
+        embed = medieval_response(f"{member.display_name} beareth no recorded misdeeds. A soul of pure virtue!", success=True)
         return await ctx.send(embed=embed)
 
     embed = medieval_embed(
@@ -650,8 +580,7 @@ async def chronicle(ctx, member: discord.Member):
         color_name="dark_gold"
     )
 
-    for action, reason, ts in rows[:10]:  # Show 10 most recent
-        # Format timestamp
+    for action, reason, ts in rows[:10]:
         dt_obj = dt.fromisoformat(ts).replace(tzinfo=timezone.utc)
         time_ago = utcnow() - dt_obj
 
@@ -664,38 +593,17 @@ async def chronicle(ctx, member: discord.Member):
             minutes = time_ago.seconds // 60
             time_str = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
 
-        action_icons = {
-            "banish": "🏴",
-            "castout": "🚪",
-            "pillory": "🪓",
-            "stocks": "🔒",
-            "pardon": "🕊️",
-            "summon": "📯",
-            "purge": "🧹",
-            "decree": "📜"
-        }
-
+        action_icons = {"banish": "🏴", "castout": "🚪", "pillory": "🪓", "stocks": "🔒", "pardon": "🕊️", "summon": "📯", "purge": "🧹", "decree": "📜"}
         icon = action_icons.get(action, "⚖️")
 
-        # Medieval action descriptions
         action_descriptions = {
-            "banish": "Banished from realm",
-            "castout": "Cast from gates",
-            "pillory": "Public pillory",
-            "stocks": "Silenced in stocks",
-            "pardon": "Royal pardon",
-            "summon": "Royal summons",
-            "purge": "Hall cleansed",
-            "decree": "Royal decree"
+            "banish": "Banished from realm", "castout": "Cast from gates", "pillory": "Public pillory",
+            "stocks": "Silenced in stocks", "pardon": "Royal pardon", "summon": "Royal summons",
+            "purge": "Hall cleansed", "decree": "Royal decree"
         }
-
         action_desc = action_descriptions.get(action, action)
 
-        embed.add_field(
-            name=f"{icon} {action_desc} • {time_str}",
-            value=f"**Judgment:** {reason}",
-            inline=False
-        )
+        embed.add_field(name=f"{icon} {action_desc} • {time_str}", value=f"**Judgment:** {reason}", inline=False)
 
     if len(rows) > 10:
         embed.set_footer(text=f"And {len(rows) - 10} more judgment{'s' if len(rows) - 10 != 1 else ''}...")
@@ -712,10 +620,7 @@ async def chronicle(ctx, member: discord.Member):
 async def courtlog(ctx, limit: int = 10):
     """View all recent judgments in the realm"""
     if limit < 1 or limit > 25:
-        embed = medieval_response(
-            "Thou mayest view between 1 and 25 recent judgments!",
-            success=False
-        )
+        embed = medieval_response("Thou mayest view between 1 and 25 recent judgments!", success=False)
         return await ctx.send(embed=embed)
 
     try:
@@ -725,48 +630,25 @@ async def courtlog(ctx, limit: int = 10):
                 (limit,)).fetchall()
     except sqlite3.Error as e:
         logger.error(f"❌ Failed to fetch court log: {e}")
-        embed = medieval_response(
-            "The royal chronicles are sealed! The scribes have failed us!",
-            success=False
-        )
+        embed = medieval_response("The royal chronicles are sealed! The scribes have failed us!", success=False)
         return await ctx.send(embed=embed)
 
     if not rows:
-        embed = medieval_response(
-            "No judgments have been recorded in the royal chronicles!",
-            success=True
-        )
+        embed = medieval_response("No judgments have been recorded in the royal chronicles!", success=True)
         return await ctx.send(embed=embed)
 
-    embed = medieval_embed(
-        title="⚖️  Recent Royal Judgments",
-        description=f"**Last {len(rows)} judgments in the realm:**",
-        color_name="blue"
-    )
+    embed = medieval_embed(title="⚖️  Recent Royal Judgments", description=f"**Last {len(rows)} judgments in the realm:**", color_name="blue")
 
     for user_id, mod_id, action, reason, ts in rows:
-        # Get member names
         member = ctx.guild.get_member(user_id)
         moderator = ctx.guild.get_member(mod_id)
-
         member_name = member.display_name if member else f"Unknown ({user_id})"
         mod_name = moderator.display_name if moderator else f"Unknown ({mod_id})"
 
-        # Format time
         dt_obj = dt.fromisoformat(ts).replace(tzinfo=timezone.utc)
         time_str = f"<t:{int(dt_obj.timestamp())}:R>"
 
-        action_icons = {
-            "banish": "🏴",
-            "castout": "🚪",
-            "pillory": "🪓",
-            "stocks": "🔒",
-            "pardon": "🕊️",
-            "summon": "📯",
-            "purge": "🧹",
-            "decree": "📜"
-        }
-
+        action_icons = {"banish": "🏴", "castout": "🚪", "pillory": "🪓", "stocks": "🔒", "pardon": "🕊️", "summon": "📯", "purge": "🧹", "decree": "📜"}
         icon = action_icons.get(action, "⚖️")
 
         embed.add_field(
@@ -776,7 +658,6 @@ async def courtlog(ctx, limit: int = 10):
         )
 
     embed.set_footer(text=f"Royal Court of {ctx.guild.name}")
-
     await ctx.send(embed=embed)
 
 # ---------- DECREE COMMAND ----------
@@ -785,96 +666,58 @@ async def courtlog(ctx, limit: int = 10):
 @commands.guild_only()
 async def decree(ctx, channel: discord.TextChannel = None, *, message: str = ""):
     """Proclaim a royal decree to a channel"""
-    # If no channel specified, check for default decree channel
     if channel is None:
         decree_chan_id = get_decree_channel(ctx.guild.id)
         if decree_chan_id:
             channel = ctx.guild.get_channel(decree_chan_id)
-
-        # If still no channel, use current channel
         if channel is None:
             channel = ctx.channel
-
-        # If there's still no message, show usage
         if not message:
             embed = medieval_embed(
                 title="📜  Royal Decree Command",
-                description=f"**Usage:** `{PREFIX}decree [channel] <message>`\n\n**Examples:**\n`{PREFIX}decree Hear ye, the feast begins at sundown!`\n`{PREFIX}decree #announcements All subjects must attend court tomorrow!`\n`{PREFIX}decree The market square shall be closed for the royal procession!`",
+                description=f"**Usage:** `{PREFIX}decree [channel] <message>`\n\n**Examples:**\n`{PREFIX}decree Hear ye, the feast begins at sundown!`\n`{PREFIX}decree #announcements All subjects must attend court tomorrow!`",
                 color_name="orange"
             )
             embed.set_footer(text="Use !setdecree to set a default decree hall")
             return await ctx.send(embed=embed)
 
-    # Check if bot can send messages to the channel
     if not channel.permissions_for(ctx.guild.me).send_messages:
-        embed = medieval_response(
-            f"I cannot herald thy decree in {channel.mention}! The heralds are barred!",
-            success=False
-        )
+        embed = medieval_response(f"I cannot herald thy decree in {channel.mention}! The heralds are barred!", success=False)
         return await ctx.send(embed=embed)
 
-    # Create the decree with maximum medieval flair
     title = random.choice(ROYAL_TITLES)
     signature = random.choice(ROYAL_SIGNATURES)
 
-    # Medieval decree openings
     openings = [
-        "**Hear ye, hear ye!**",
-        "**Let it be known throughout the land that**",
-        "**By royal command and sovereign will,**",
-        "**Unto all loyal subjects of the realm,**",
-        "**Thus spake the Crown from the highest tower:**",
-        "**Be it proclaimed from castle to cottage that**",
-        "**The word of the monarch rings clear:**",
-        "**Let the trumpets sound and banners fly, for**",
+        "**Hear ye, hear ye!**", "**Let it be known throughout the land that**", "**By royal command and sovereign will,**",
+        "**Unto all loyal subjects of the realm,**", "**Thus spake the Crown from the highest tower:**", "**Be it proclaimed from castle to cottage that**",
+        "**The word of the monarch rings clear:**", "**Let the trumpets sound and banners fly, for**",
     ]
 
-    # Medieval decree closings
     closings = [
-        "**So says the Crown!**",
-        "**Let none dare oppose this decree!**",
-        "**May all heed these words!**",
-        "**By my royal authority!**",
-        "**So shall it be, now and forever!**",
-        "**Let this be law in all the land!**",
-        "**He who obeys shall prosper!**",
-        "**Signed and sealed!**",
+        "**So says the Crown!**", "**Let none dare oppose this decree!**", "**May all heed these words!**", "**By my royal authority!**",
+        "**So shall it be, now and forever!**", "**Let this be law in all the land!**", "**He who obeys shall prosper!**", "**Signed and sealed!**",
     ]
 
     opening = random.choice(openings)
     closing = random.choice(closings)
-
-    # Format the full decree
     full_message = f"{opening}\n\n{message}\n\n{closing}"
 
-    # Create the royal embed
     embed = discord.Embed(
         title=f"📜  {title}",
         description=full_message,
         colour=discord.Colour.gold(),
         timestamp=utcnow()
     )
+    embed.set_author(name=f"Proclaimed by {ctx.author.display_name}, Herald of the Crown", icon_url=ctx.author.display_avatar.url)
+    embed.set_footer(text=f"✨ {signature} • Royal Court of {ctx.guild.name}")
 
-    # Add royal author field
-    embed.set_author(
-        name=f"Proclaimed by {ctx.author.display_name}, Herald of the Crown",
-        icon_url=ctx.author.display_avatar.url
-    )
-
-    # Add royal footer with seal
-    embed.set_footer(
-        text=f"✨ {signature} • Royal Court of {ctx.guild.name}"
-    )
-
-    # Add a royal seal/thumbnail if possible
     if ctx.guild.icon:
         embed.set_thumbnail(url=ctx.guild.icon.url)
 
-    # Send the decree
     try:
         await channel.send(embed=embed)
 
-        # Send confirmation to command user
         confirm_messages = [
             f"Thy decree hath been proclaimed in {channel.mention}!",
             f"The royal word echoes through {channel.mention}!",
@@ -882,26 +725,15 @@ async def decree(ctx, channel: discord.TextChannel = None, *, message: str = "")
             f"Thy proclamation rings in {channel.mention}!",
         ]
 
-        confirmation = medieval_response(
-            random.choice(confirm_messages),
-            success=True
-        )
+        confirmation = medieval_response(random.choice(confirm_messages), success=True)
         await ctx.send(embed=confirmation, delete_after=5)
-
-        # Log the action
         log_action(ctx.author.id, ctx.author.id, "decree", f"Proclaimed in {channel.name}: {message[:50]}...")
 
     except discord.Forbidden:
-        embed = medieval_response(
-            f"Could not send decree to {channel.mention}. The gates are barred!",
-            success=False
-        )
+        embed = medieval_response(f"Could not send decree to {channel.mention}. The gates are barred!", success=False)
         await ctx.send(embed=embed)
     except discord.HTTPException:
-        embed = medieval_response(
-            "Failed to send the decree. The royal scribe's quill broke!",
-            success=False
-        )
+        embed = medieval_response("Failed to send the decree. The royal scribe's quill broke!", success=False)
         await ctx.send(embed=embed)
 
 # ---------- SETPILLORY COMMAND ----------
@@ -911,10 +743,7 @@ async def decree(ctx, channel: discord.TextChannel = None, *, message: str = "")
 async def setpillory(ctx, channel: discord.TextChannel):
     """Set the pillory announcement hall"""
     set_pillory_channel(ctx.guild.id, channel.id)
-    embed = medieval_response(
-        f"The pillory yard hath been raised in {channel.mention}. Let all who trespass beware!",
-        success=True
-    )
+    embed = medieval_response(f"The pillory yard hath been raised in {channel.mention}. Let all who trespass beware!", success=True)
     await ctx.send(embed=embed)
 
 # ---------- SETDECREE COMMAND ----------
@@ -924,10 +753,7 @@ async def setpillory(ctx, channel: discord.TextChannel):
 async def setdecree(ctx, channel: discord.TextChannel):
     """Set the royal decree proclamation hall"""
     set_decree_channel(ctx.guild.id, channel.id)
-    embed = medieval_response(
-        f"The royal decree hall hath been established in {channel.mention}. All proclamations shall echo there!",
-        success=True
-    )
+    embed = medieval_response(f"The royal decree hall hath been established in {channel.mention}. All proclamations shall echo there!", success=True)
     await ctx.send(embed=embed)
 
 # ---------- ON READY ----------
@@ -937,7 +763,6 @@ async def on_ready():
     logger.info('⚖️  Ready to administer royal justice!')
     logger.info('📜  Royal seals prepared and chronicles open!')
     
-    # Initialize database
     try:
         init_db()
         logger.info("✅ Database initialized successfully")
@@ -952,7 +777,6 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return
 
-    # Medieval error messages
     error_messages = {
         commands.BadArgument: {
             "Member": "I know not of that soul in our realm. Use @mention or exact name, m'lord.",
@@ -970,7 +794,6 @@ async def on_command_error(ctx, error):
         }
     }
 
-    # Find appropriate error message
     error_msg = None
     error_type = type(error)
 
@@ -1000,12 +823,50 @@ async def on_command_error(ctx, error):
         embed = medieval_response(error_msg, success=False)
         await ctx.send(embed=embed)
     else:
-        embed = medieval_response(
-            "An ill omen befell the royal scribes! The chronicles shall record this mishap.",
-            success=False
-        )
+        embed = medieval_response("An ill omen befell the royal scribes! The chronicles shall record this mishap.", success=False)
         await ctx.send(embed=embed)
         logger.error(f"🏰  Unhandled error: {type(error).__name__} - {error}")
+
+# ---------- HYBRID RUNNER ----------
+class HybridRunner:
+    def __init__(self):
+        self.web_app = create_web_app()
+        self.web_runner = None
+        self.bot_task = None
+        
+    async def start_web_server(self):
+        """Start the web server for Render"""
+        self.web_runner = web.AppRunner(self.web_app)
+        await self.web_runner.setup()
+        port = int(os.getenv('PORT', '10000'))
+        site = web.TCPSite(self.web_runner, '0.0.0.0', port)
+        await site.start()
+        logger.info(f"🌐 Web server started on port {port}")
+        
+    async def start_bot(self):
+        """Start the Discord bot"""
+        try:
+            await bot.start(TOKEN)
+        except Exception as e:
+            logger.error(f"❌ Bot failed to start: {e}")
+            raise
+            
+    async def run(self):
+        """Run both web server and bot"""
+        # Start web server first
+        await self.start_web_server()
+        
+        # Start bot in background
+        self.bot_task = asyncio.create_task(self.start_bot())
+        
+        # Keep both running
+        try:
+            await self.bot_task
+        except KeyboardInterrupt:
+            logger.info("🛑 Shutting down...")
+        finally:
+            if self.web_runner:
+                await self.web_runner.cleanup()
 
 # ---------- RUN ----------
 if __name__ == "__main__":
@@ -1015,7 +876,8 @@ if __name__ == "__main__":
     logger.info("🎭  All commands require the royal seal...")
     
     try:
-        bot.run(TOKEN)
+        runner = HybridRunner()
+        asyncio.run(runner.run())
     except discord.LoginFailure:
         logger.error("❌ Failed to login! Check your DISCORD_TOKEN environment variable.")
         logger.error("Make sure it's set correctly in your Render dashboard.")
